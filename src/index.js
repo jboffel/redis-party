@@ -186,8 +186,9 @@ RedisCluster.prototype.sendClusterCommand = function (command, args, callback) {
     if (this.refreshTable) {
         this.initializeSlotsCache();
         this.once("ready", function () {
-            var argsArray = Array.prototype.slice.call(arguments, 0);
-            self.sendClusterCommand.apply(self, argsArray);
+            // slots cache reinitialized, proceed with the original call
+
+            self.sendClusterCommand.call(self, command, args, callback);
         });
         return;
     }
@@ -207,6 +208,8 @@ RedisCluster.prototype.sendClusterCommand = function (command, args, callback) {
             return;
         }
 
+        //console.log('slot: '+slot+' conn: '+conn);
+
         var cb = callback;
         if (!cb) {
             var lastArgType = typeof args[args.length - 1];
@@ -219,17 +222,29 @@ RedisCluster.prototype.sendClusterCommand = function (command, args, callback) {
 
         callback = function (err, res) {
             if (err) {
+                //console.error(err);
+
                 var parts = err.toString().split(" ");
-                if (parts[1] === "MOVED" || parts[1] === "ASK") {
+                if (parts[1] === "MOVED") {
+                    // update the cluster, and redo the call
+                    var new_location = parts[3].slice(':');
+                    self.slots[parts[2]*1] = {host: new_location[0], port: new_location[1]*1};
+
+                    // calls itself, re-adding the callback as the last element of the args array
+                    self.sendClusterCommand.call(self, command, args.concat([cb]));
+                    return;
+                } else if (parts[1] === "ASK") {
                     self.refreshTable = true;
                     self.emit("clusterConfig");
-                    self.sendClusterCommand.apply(self, args);
+                    // calls itself, re-adding the callback as the last element of the args array
+                    self.sendClusterCommand.call(self, command, args.concat([cb]));
                     return;
                 }
                 cb(err);
                 return;
             }
 
+            //console.log('cb exec: '+cb);
             cb(null, res);
         };
 
