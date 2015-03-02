@@ -227,7 +227,7 @@ RedisCluster.prototype.sendClusterCommand = function (command, args, callback) {
                 var parts = err.toString().split(" ");
                 if (parts[1] === "MOVED") {
                     // update the cluster, and redo the call
-                    var new_location = parts[3].slice(':');
+                    var new_location = parts[3].split(':');
                     self.slots[parts[2]*1] = {host: new_location[0], port: new_location[1]*1};
 
                     // calls itself, re-adding the callback as the last element of the args array
